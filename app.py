@@ -9,6 +9,44 @@ from groq import Groq
 load_dotenv()
 
 st.set_page_config(page_title="Mon Tuteur Français", page_icon="🇫🇷", layout="centered")
+
+# --- Custom CSS to dock the audio widget permanently to the bottom ---
+st.markdown(
+    """
+    <style>
+    /* Give the chat container bottom padding so the last message isn't hidden behind the fixed mic */
+    .main .block-container {
+        padding-bottom: 160px;
+    }
+
+    /* Target the audio input container and pin it above the chat input */
+    [data-testid="stAudioInput"] {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 700px;
+        z-index: 999;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 6px 16px;
+        border-radius: 14px;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
+    }
+
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+        [data-testid="stAudioInput"] {
+            background: rgba(14, 17, 23, 0.95);
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🇫🇷 Mon Ami & Tuteur Français")
 
 # Groq API configuration
@@ -73,7 +111,6 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["reply"])
 
-            # Audio Player for iPhone/Browser
             if msg.get("audio"):
                 st.audio(msg["audio"], format="audio/mp3")
 
@@ -88,10 +125,8 @@ for msg in st.session_state.messages:
                         st.markdown(f"- **Mieux vaut dire :** **{c['better']}**")
                         st.markdown(f"- *{c['explanation']}*\n")
 
-# --- Direct Bottom Controls ---
-st.divider()
-
-audio_file = st.audio_input("🎙️ Enregistrer un message oral", label_visibility="visible")
+# --- Persistent Bottom Audio + Text Input ---
+audio_file = st.audio_input("🎙️ Enregistrer un message oral", label_visibility="collapsed")
 typed_prompt = st.chat_input("Écris en français ici...")
 
 # Handle audio transcription if recorded
@@ -143,7 +178,6 @@ if prompt:
                     )
                     data = json.loads(response.choices[0].message.content)
 
-                    # Generate spoken audio
                     audio_stream = generate_french_audio(data["reply"])
 
                     st.markdown(data["reply"])
