@@ -10,36 +10,38 @@ load_dotenv()
 
 st.set_page_config(page_title="Mon Tuteur Français", page_icon="🇫🇷", layout="centered")
 
-# --- Custom CSS to dock the audio widget permanently to the bottom ---
+# --- Custom CSS: Dock mic bar permanently to the bottom ---
 st.markdown(
     """
     <style>
-    /* Give the chat container bottom padding so the last message isn't hidden behind the fixed mic */
+    /* Add padding so the last message isn't covered by the fixed mic bar */
     .main .block-container {
-        padding-bottom: 160px;
+        padding-bottom: 110px;
     }
 
-    /* Target the audio input container and pin it above the chat input */
+    /* Pin the audio recorder directly to the bottom center */
     [data-testid="stAudioInput"] {
         position: fixed;
-        bottom: 80px;
+        bottom: 16px;
         left: 50%;
         transform: translateX(-50%);
-        width: 100%;
-        max-width: 700px;
+        width: calc(100% - 32px);
+        max-width: 650px;
         z-index: 999;
         background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        padding: 6px 16px;
-        border-radius: 14px;
-        box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
+        backdrop-filter: blur(12px);
+        padding: 8px 16px;
+        border-radius: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+        border: 1px solid rgba(0, 0, 0, 0.08);
     }
 
-    /* Dark mode support */
+    /* Dark mode styling */
     @media (prefers-color-scheme: dark) {
         [data-testid="stAudioInput"] {
-            background: rgba(14, 17, 23, 0.95);
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+            background: rgba(18, 22, 30, 0.95);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
     }
     </style>
@@ -49,7 +51,7 @@ st.markdown(
 
 st.title("🇫🇷 Mon Ami & Tuteur Français")
 
-# Groq API configuration
+# Groq API setup
 api_key = os.getenv("GROQ_API_KEY")
 if not api_key:
     st.error("Please set your GROQ_API_KEY in .env or Streamlit secrets.")
@@ -125,11 +127,9 @@ for msg in st.session_state.messages:
                         st.markdown(f"- **Mieux vaut dire :** **{c['better']}**")
                         st.markdown(f"- *{c['explanation']}*\n")
 
-# --- Persistent Bottom Audio + Text Input ---
+# --- Persistent Audio Input (Voice Only) ---
 audio_file = st.audio_input("🎙️ Enregistrer un message oral", label_visibility="collapsed")
-typed_prompt = st.chat_input("Écris en français ici...")
 
-# Handle audio transcription if recorded
 spoken_prompt = None
 if audio_file:
     audio_bytes = audio_file.read()
@@ -147,17 +147,15 @@ if audio_file:
             except Exception as e:
                 st.error(f"Erreur audio : {e}")
 
-prompt = spoken_prompt if spoken_prompt else typed_prompt
-
-# Send prompt to tutor
-if prompt:
+# Process voice message
+if spoken_prompt:
     if (
         not st.session_state.messages
-        or st.session_state.messages[-1].get("content") != prompt
+        or st.session_state.messages[-1].get("content") != spoken_prompt
     ):
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append({"role": "user", "content": spoken_prompt})
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.markdown(spoken_prompt)
 
         llm_history = [{"role": "system", "content": SYSTEM_PROMPT}]
         for m in st.session_state.messages[:-1]:
@@ -165,7 +163,7 @@ if prompt:
                 llm_history.append({"role": "user", "content": m["content"]})
             else:
                 llm_history.append({"role": "assistant", "content": m["reply"]})
-        llm_history.append({"role": "user", "content": prompt})
+        llm_history.append({"role": "user", "content": spoken_prompt})
 
         with st.chat_message("assistant"):
             with st.spinner("En train de réfléchir..."):
