@@ -1,15 +1,17 @@
+import io
 import json
 import os
+from gtts import gTTS
 import streamlit as st
-import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv()
 
-st.set_page_config(page_title="Mon Tuteur Français", page_icon="🇫🇷")
+st.set_page_config(page_title="Mon Tuteur Français", page_icon="🇫🇷", layout="centered")
 st.title("🇫🇷 Mon Ami & Tuteur Français")
 
+# Groq API configuration
 api_key = os.getenv("GROQ_API_KEY")
 if not api_key:
     st.error("Please set your GROQ_API_KEY in .env or Streamlit secrets.")
@@ -40,31 +42,28 @@ Guidelines:
 - The output MUST be strictly valid JSON without any markdown formatting or code blocks.
 """
 
+def generate_french_audio(text):
+    """Generates an MP3 byte buffer of French speech."""
+    try:
+        tts = gTTS(text=text, lang="fr", slow=False)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp
+    except Exception:
+        return None
+
 if "messages" not in st.session_state:
+    initial_text = "Salut ! Comment ça va aujourd'hui ? Tu as fait quoi de beau ?"
     st.session_state.messages = [
         {
             "role": "assistant",
-            "reply": "Salut ! Comment ça va aujourd'hui ? Tu as fait quoi de beau ?",
+            "reply": initial_text,
             "translation": "Hi! How are you doing today? Did you do anything fun?",
+            "audio": generate_french_audio(initial_text),
             "corrections": [],
         }
     ]
-
-# Native browser French voice player
-def speak_french(text):
-    clean_text = json.dumps(text)
-    components.html(
-        f"""
-        <script>
-        const utter = new SpeechSynthesisUtterance({clean_text});
-        utter.lang = 'fr-FR';
-        utter.rate = 0.95;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utter);
-        </script>
-        """,
-        height=0,
-    )
 
 # Render chat history
 for msg in st.session_state.messages:
@@ -74,12 +73,14 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["reply"])
 
-            # English Translation Dropdown
+            # Audio Player for iPhone/Browser
+            if msg.get("audio"):
+                st.audio(msg["audio"], format="audio/mp3")
+
             if msg.get("translation"):
                 with st.expander("🇬🇧 Traduction en anglais"):
                     st.write(msg["translation"])
 
-            # Corrections Dropdown
             if msg.get("corrections"):
                 with st.expander("💡 Corrections & Explications"):
                     for c in msg["corrections"]:
@@ -87,33 +88,33 @@ for msg in st.session_state.messages:
                         st.markdown(f"- **Mieux vaut dire :** **{c['better']}**")
                         st.markdown(f"- *{c['explanation']}*\n")
 
-# --- Voice Input in Sidebar ---
+# --- Direct Bottom Controls ---
+st.divider()
+
+audio_file = st.audio_input("🎙️ Enregistrer un message oral", label_visibility="visible")
+typed_prompt = st.chat_input("Écris en français ici...")
+
+# Handle audio transcription if recorded
 spoken_prompt = None
-with st.sidebar:
-    st.header("🎙️ Parle en français")
-    st.caption("Enregistre ton message oral :")
-    audio_file = st.audio_input("Microphone")
-    if audio_file:
+if audio_file:
+    audio_bytes = audio_file.read()
+    if st.session_state.get("last_audio_bytes") != audio_bytes:
+        st.session_state["last_audio_bytes"] = audio_bytes
         with st.spinner("Transcription de ta voix..."):
             try:
                 transcription = client.audio.transcriptions.create(
-                    file=("audio.wav", audio_file.read()),
+                    file=("audio.wav", audio_bytes),
                     model=STT_MODEL,
                     language="fr",
                     prompt="Conversation en français courant.",
                 )
                 spoken_prompt = transcription.text
-                st.success(f"Compris : « {spoken_prompt} »")
             except Exception as e:
                 st.error(f"Erreur audio : {e}")
 
-# Text Input at Bottom
-typed_prompt = st.chat_input("Ou écris en français ici...")
-
-# Prioritize voice if recorded, otherwise text
 prompt = spoken_prompt if spoken_prompt else typed_prompt
 
-# Process the message
+# Send prompt to tutor
 if prompt:
     if (
         not st.session_state.messages
@@ -142,16 +143,17 @@ if prompt:
                     )
                     data = json.loads(response.choices[0].message.content)
 
-                    # Show response and play audio
-                    st.markdown(data["reply"])
-                    speak_french(data["reply"])
+                    # Generate spoken audio
+                    audio_stream = generate_french_audio(data["reply"])
 
-                    # Show Translation dropdown
+                    st.markdown(data["reply"])
+                    if audio_stream:
+                        st.audio(audio_stream, format="audio/mp3")
+
                     if data.get("translation"):
                         with st.expander("🇬🇧 Traduction en anglais"):
                             st.write(data["translation"])
 
-                    # Show Corrections dropdown
                     if data.get("corrections"):
                         with st.expander("💡 Corrections & Explications"):
                             for c in data["corrections"]:
@@ -166,6 +168,7 @@ if prompt:
                             "role": "assistant",
                             "reply": data["reply"],
                             "translation": data.get("translation", ""),
+                            "audio": audio_stream,
                             "corrections": data.get("corrections", []),
                         }
                     )
